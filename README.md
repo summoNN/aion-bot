@@ -77,6 +77,9 @@ VOICE_CONFIG_PATH=config/voice_channels.json
 VOICE_VOLUME=1.0
 LOG_LEVEL=INFO
 HEALTHCHECK_PATH=cache/health/ready
+CONTROL_API_HOST=0.0.0.0
+CONTROL_API_PORT=8765
+CONTROL_API_TOKEN=
 ```
 
 After the first start, check the deployment console for the JSON `Logged in` and scheduler messages. Invite the bot with **View Channels**, **Connect**, **Speak**, and application-command permissions, then run `/setchannel` in the target guild. A newly configured channel enables autojoin by default. Use `/voicestatus` to confirm the voice connection and latency.
@@ -104,6 +107,20 @@ FFMPEG_EXECUTABLE=C:\ffmpeg\bin\ffmpeg.exe
 Use `/setchannel` (or `/setvoicechannel`) as a Manage Server member to persist a voice target for that guild. A newly configured target enables autojoin by default and the bot connects on startup, even when the channel is empty. `/autojoin enable` and `/autojoin disable` control persistent startup behavior. `/join` connects immediately and enables reconnection for the current process; `/leave` intentionally disconnects and suspends automatic retries until `/join` or `/autojoin enable`. The bot never joins an arbitrary voice channel selected from a user's current presence.
 
 `edge-tts` generates and caches MP3 audio under `TTS_CACHE_DIR`. Each guild has an asynchronous playback queue, so simultaneous announcements do not overlap. Unexpected disconnects retry with exponential backoff and a single per-guild connection lock prevents duplicate voice clients. `/voicestatus` reports the configured channel, connection state, voice latency, and retry state. `/testvoice rift` and `/testvoice shugo` exercise the configured announcement messages; `/volume` controls per-guild playback volume from `0.0` to `2.0`.
+
+## Web dashboard control API
+
+The bot includes an authenticated HTTP API for the companion Next.js dashboard. Set these values in the bot deployment:
+
+```dotenv
+CONTROL_API_HOST=0.0.0.0
+CONTROL_API_PORT=8765
+CONTROL_API_TOKEN=use-a-long-random-secret
+```
+
+Set `BOT_API_URL` to the bot host's public HTTPS URL and `BOT_API_TOKEN` to the exact same secret in the dashboard deployment. Do not use `localhost` for a Vercel dashboard: Vercel would try to reach itself instead of the bot. The dashboard discovers the guild ID automatically from `GET /api/v1/guilds`, so `BOT_GUILD_ID` is not required.
+
+The API exposes `GET /api/health` for health checks and token-protected routes for guild discovery, state, configuration changes, voice actions, and test announcements. Keep port `8765` reachable from the Vercel server and never expose `DISCORD_TOKEN` to the dashboard.
 
 The bot deliberately does not generate fake voice activity or play silent audio to keep a channel alive. Discord voice connections remain active because the bot process maintains the real connection; therefore a continuously running host is required.
 

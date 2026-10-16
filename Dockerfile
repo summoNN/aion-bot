@@ -11,6 +11,8 @@ RUN apt-get update \
 
 WORKDIR /app
 
+EXPOSE 8765
+
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt
 

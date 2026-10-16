@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 
 from bot.cogs.events import EventsCog
 from bot.services.event_sources import EventConfigError
+from bot.services.control_api import ControlAPI
 from bot.services.tts import TTSService
 from bot.services.voice import VoiceService
 from bot.services.voice_config import VoiceConfigError, VoiceConfigStore
@@ -57,6 +58,9 @@ class Settings:
     log_level: str
     guild_id: int | None
     health_path: Path
+    control_api_host: str
+    control_api_port: int
+    control_api_token: str
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -76,6 +80,9 @@ class Settings:
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
             guild_id=_parse_int(os.getenv("GUILD_ID"), "GUILD_ID"),
             health_path=Path(os.getenv("HEALTHCHECK_PATH", "cache/health/ready")),
+            control_api_host=os.getenv("CONTROL_API_HOST", "0.0.0.0"),
+            control_api_port=_parse_int(os.getenv("CONTROL_API_PORT", "8765"), "CONTROL_API_PORT") or 8765,
+            control_api_token=os.getenv("CONTROL_API_TOKEN", "").strip(),
         )
 
 
@@ -116,6 +123,7 @@ class AionBot(commands.Bot):
         self.voice_service = VoiceService(settings.ffmpeg_executable, voice_config, settings.voice_volume)
         self.tts_service = TTSService(settings.tts_voice, settings.tts_cache_dir)
         self.events_cog: EventsCog | None = None
+        self.control_api: ControlAPI | None = None
         self._started = False
 
     def _mark_health(self) -> None:
@@ -140,6 +148,20 @@ class AionBot(commands.Bot):
             tts_service=self.tts_service,
         )
         await self.add_cog(self.events_cog)
+        control_token = getattr(self.settings, "control_api_token", "")
+        if control_token:
+            self.control_api = ControlAPI(
+                bot=self,
+                events_cog=self.events_cog,
+                voice_service=self.voice_service,
+                tts_service=self.tts_service,
+                token=control_token,
+                host=getattr(self.settings, "control_api_host", "0.0.0.0"),
+                port=getattr(self.settings, "control_api_port", 8765),
+            )
+            await self.control_api.start()
+        else:
+            LOGGER.warning("CONTROL_API_TOKEN is not set; dashboard control API is disabled")
 
     async def on_ready(self) -> None:
         if self.user is None:
@@ -195,6 +217,8 @@ class AionBot(commands.Bot):
 
     async def close(self) -> None:
         self._clear_health()
+        if self.control_api is not None:
+            await self.control_api.close()
         if self.events_cog is not None:
             await self.events_cog.stop()
         await self.tts_service.close()
