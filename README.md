@@ -78,13 +78,14 @@ VOICE_VOLUME=1.0
 LOG_LEVEL=INFO
 HEALTHCHECK_PATH=cache/health/ready
 CONTROL_API_HOST=0.0.0.0
-CONTROL_API_PORT=8765
+# Bot-Hosting supplies SERVER_PORT automatically. Leave CONTROL_API_PORT empty there.
+CONTROL_API_PORT=
 CONTROL_API_TOKEN=
 ```
 
 After the first start, check the deployment console for the JSON `Logged in` and scheduler messages. Invite the bot with **View Channels**, **Connect**, **Speak**, and application-command permissions, then run `/setchannel` in the target guild. A newly configured channel enables autojoin by default. Use `/voicestatus` to confirm the voice connection and latency.
 
-The deployment must provide an executable named `ffmpeg` for voice playback. If the console reports that FFmpeg cannot be started, configure the host's available FFmpeg path in `FFMPEG_EXECUTABLE` or use the Docker/VPS deployment below; the project cannot install a system executable through Python's `requirements.txt`. The Bot-Hosting deployment is a Python runtime deployment, so the included `Dockerfile` is not used there.
+The deployment must provide an executable named `ffmpeg` for voice playback. If the console reports that FFmpeg cannot be started, configure the host's available FFmpeg path in `FFMPEG_EXECUTABLE` or use the Docker/VPS deployment below; the project cannot install a system executable through Python's `requirements.txt`. The Bot-Hosting deployment is a Python runtime deployment, so the included `Dockerfile` is not used there. The control API listens on `SERVER_PORT` automatically; if you previously added `CONTROL_API_PORT=8765` in the hosting panel, remove it or change it to the published port.
 
 Keep `config/events.json`, `config/voice_channels.json`, and `cache/tts/` on the deployment filesystem. The first two contain the schedule and per-guild voice target; the cache avoids regenerating repeated speech. The included `.bothostingignore` prevents local secrets, tests, caches, and Docker-only files from being uploaded by the Bot-Hosting CLI. If using the free plan, remember that the host currently requires manual renewal every four days.
 
@@ -118,9 +119,9 @@ CONTROL_API_PORT=8765
 CONTROL_API_TOKEN=use-a-long-random-secret
 ```
 
-Set `BOT_API_URL` to the bot host's public HTTPS URL and `BOT_API_TOKEN` to the exact same secret in the dashboard deployment. Do not use `localhost` for a Vercel dashboard: Vercel would try to reach itself instead of the bot. The dashboard discovers the guild ID automatically from `GET /api/v1/guilds`, so `BOT_GUILD_ID` is not required.
+Set `BOT_API_URL` to the bot host's public URL, including the scheme and published port when required, for example `http://fi17.bot-hosting.cloud:25657` for a local test. Use the host's HTTPS domain when one is available for Vercel. Set `BOT_API_TOKEN` to the exact same secret in the dashboard deployment. Do not use `localhost` for a Vercel dashboard: Vercel would try to reach itself instead of the bot. The dashboard discovers the guild ID automatically from `GET /api/v1/guilds`, so `BOT_GUILD_ID` is not required.
 
-The API exposes `GET /api/health` for health checks and token-protected routes for guild discovery, state, configuration changes, voice actions, and test announcements. Keep port `8765` reachable from the Vercel server and never expose `DISCORD_TOKEN` to the dashboard.
+The API exposes `GET /api/health` for health checks and token-protected routes for guild discovery, state, configuration changes, voice actions, and test announcements. Keep the published control API port reachable from the Vercel server and never expose `DISCORD_TOKEN` to the dashboard.
 
 The bot deliberately does not generate fake voice activity or play silent audio to keep a channel alive. Discord voice connections remain active because the bot process maintains the real connection; therefore a continuously running host is required.
 

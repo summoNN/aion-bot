@@ -81,7 +81,10 @@ class Settings:
             guild_id=_parse_int(os.getenv("GUILD_ID"), "GUILD_ID"),
             health_path=Path(os.getenv("HEALTHCHECK_PATH", "cache/health/ready")),
             control_api_host=os.getenv("CONTROL_API_HOST", "0.0.0.0"),
-            control_api_port=_parse_int(os.getenv("CONTROL_API_PORT", "8765"), "CONTROL_API_PORT") or 8765,
+            control_api_port=_parse_int(
+                os.getenv("CONTROL_API_PORT") or os.getenv("SERVER_PORT") or "8765",
+                "CONTROL_API_PORT",
+            ) or 8765,
             control_api_token=os.getenv("CONTROL_API_TOKEN", "").strip(),
         )
 
