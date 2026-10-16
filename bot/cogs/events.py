@@ -445,6 +445,17 @@ class EventsCog(commands.Cog):
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         if isinstance(error, app_commands.MissingPermissions):
             message = "You need Manage Server permission to edit schedules, voice configuration, or volume."
+        elif isinstance(error, app_commands.TransformerError):
+            command_name = interaction.command.name if interaction.command else "unknown"
+            if command_name == "join":
+                message = (
+                    "The deployed `/join` command is using an outdated definition. "
+                    "Restart/redeploy the bot so `/join` is refreshed; it takes no channel argument."
+                )
+            elif command_name in {"setchannel", "setvoicechannel"}:
+                message = "Select a Discord voice channel for this command, not a text or category channel."
+            else:
+                message = "Discord could not convert that command option. Check the selected channel and try again."
         else:
             LOGGER.exception("Application command failed", exc_info=error)
             message = "The command failed unexpectedly. Check the bot logs."

@@ -146,14 +146,7 @@ class AionBot(commands.Bot):
             return
 
         if not self._started and self.events_cog is not None:
-            if self.settings.guild_id is not None:
-                guild = discord.Object(id=self.settings.guild_id)
-                self.tree.copy_global_to(guild=guild)
-                await self.tree.sync(guild=guild)
-                LOGGER.info("Slash commands synced to development guild %s", self.settings.guild_id)
-            else:
-                await self.tree.sync()
-                LOGGER.info("Slash commands synced globally")
+            await self._sync_commands()
             try:
                 await self.events_cog.start()
             except EventConfigError:
@@ -164,6 +157,31 @@ class AionBot(commands.Bot):
             self._mark_health()
 
         LOGGER.info("Logged in as %s (id=%s)", self.user, self.user.id)
+
+    async def _sync_commands(self) -> None:
+        """Synchronize the current command schema and remove stale dev globals."""
+        if self.settings.guild_id is None:
+            await self.tree.sync()
+            LOGGER.info("Slash commands synced globally")
+            return
+
+        guild = discord.Object(id=self.settings.guild_id)
+        current_commands = list(self.tree.get_commands())
+
+        # A previous deployment may have registered an old global /join that
+        # still expects a channel. Remove those global definitions so Discord
+        # cannot present both schemas to users while developing in one guild.
+        self.tree.clear_commands(guild=None)
+        try:
+            await self.tree.sync()
+        finally:
+            for command in current_commands:
+                self.tree.add_command(command)
+
+        self.tree.clear_commands(guild=guild)
+        self.tree.copy_global_to(guild=guild)
+        await self.tree.sync(guild=guild)
+        LOGGER.info("Slash commands synced to development guild %s", self.settings.guild_id)
 
     async def on_resumed(self) -> None:
         self._mark_health()

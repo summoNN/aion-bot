@@ -51,6 +51,8 @@ The bot must also be able to send messages and use application commands in the c
 
 Commands are guild-scoped when `GUILD_ID` is set and global otherwise.
 
+`/join` intentionally has no channel argument: it connects to the saved channel. `/setchannel channel:<voice channel>` is the only command that accepts a channel. If Discord displays `/join` with a channel option after an update, restart/redeploy the bot and reopen Discord's command menu; the startup sync removes stale global development definitions when `GUILD_ID` is set.
+
 ## Bot-Hosting.net deployment
 
 Bot-Hosting.net supports Python Discord bots as application deployments. Create an **Application** deployment with the Python runtime, upload this project from GitHub or an archive, and set the panel's **Entry File (`STARTUP_FILE`)** to:
