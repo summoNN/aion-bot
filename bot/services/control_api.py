@@ -261,6 +261,14 @@ class ControlAPI:
         config = self.voice_service.config_for(guild)
         target = self.voice_service.target_channel(guild)
         client = guild.voice_client
+        channels_by_id: dict[int, dict[str, Any]] = {}
+        for channel in guild.channels:
+            if isinstance(channel, VOICE_CHANNEL_TYPES):
+                channels_by_id[channel.id] = {
+                    "id": channel.id,
+                    "name": channel.name,
+                    "categoryName": channel.category.name if channel.category else None,
+                }
         connected = bool(client is not None and client.is_connected())
         latency = getattr(client, "latency", None) if connected else None
         if guild.id in self.voice_service._intentional_disconnects:
@@ -276,15 +284,7 @@ class ControlAPI:
             "connected": connected,
             "channelId": config.channel_id if config else None,
             "channelName": target.name if target else (client.channel.name if connected and client.channel else None),
-            "channels": [
-                {
-                    "id": channel.id,
-                    "name": channel.name,
-                    "categoryName": channel.category.name if channel.category else None,
-                }
-                for channel in guild.channels
-                if isinstance(channel, VOICE_CHANNEL_TYPES)
-            ],
+            "channels": list(channels_by_id.values()),
             "autojoin": config.autojoin if config else False,
             "volume": self.voice_service.volume_for(guild),
             "latencyMs": round(latency * 1000) if isinstance(latency, (int, float)) else None,
