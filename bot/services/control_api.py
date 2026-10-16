@@ -182,9 +182,15 @@ class ControlAPI:
             config = scheduler.config
 
         if "channelId" in body:
-            channel_id = body["channelId"]
-            if isinstance(channel_id, bool) or not isinstance(channel_id, int) or channel_id <= 0:
-                raise VoiceConfigError("channelId must be a positive integer.")
+            raw_channel_id = body["channelId"]
+            if isinstance(raw_channel_id, bool) or not isinstance(raw_channel_id, (int, str)):
+                raise VoiceConfigError("channelId must be a valid Discord channel ID.")
+            try:
+                channel_id = int(raw_channel_id)
+            except (TypeError, ValueError) as exc:
+                raise VoiceConfigError("channelId must be a valid Discord channel ID.") from exc
+            if channel_id <= 0:
+                raise VoiceConfigError("channelId must be a valid Discord channel ID.")
             channel = guild.get_channel(channel_id)
             if not isinstance(channel, discord.VoiceChannel):
                 raise VoiceConfigError("Select a voice channel from this server.")
@@ -277,7 +283,7 @@ class ControlAPI:
         return {
             "configured": config is not None,
             "connected": connected,
-            "channelId": config.channel_id if config else None,
+            "channelId": str(config.channel_id) if config else None,
             "channelName": target.name if target else (client.channel.name if connected and client.channel else None),
             "channels": channels,
             "autojoin": config.autojoin if config else False,
@@ -307,7 +313,7 @@ class ControlAPI:
                 if not permissions.view_channel or not permissions.connect or not permissions.speak:
                     continue
             channels_by_id[channel.id] = {
-                "id": channel.id,
+                "id": str(channel.id),
                 "name": channel.name,
                 "categoryName": channel.category.name if channel.category else None,
                 "type": "voice",
