@@ -20,7 +20,7 @@ from bot.services.event_sources import (
 )
 from bot.services.scheduler import EventScheduler
 from bot.services.tts import TTSService
-from bot.services.voice import VoiceService
+from bot.services.voice import VOICE_CHANNEL_TYPES, VoiceService
 from bot.services.voice_config import VoiceConfigError
 
 LOGGER = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ class EventsCog(commands.Cog):
     ) -> None:
         if self.bot.user is None or member.id != self.bot.user.id:
             return
-        channel = after.channel if isinstance(after.channel, discord.VoiceChannel) else None
+        channel = after.channel if isinstance(after.channel, VOICE_CHANNEL_TYPES) else None
         await self.voice_service.handle_voice_state_update(member.guild, channel)
 
     async def _announce_event(self, event: ConfiguredEvent, reminder_minutes: int, occurrence: datetime) -> None:
@@ -260,7 +260,7 @@ class EventsCog(commands.Cog):
         if interaction.guild is None:
             await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
             return
-        if not isinstance(channel, discord.VoiceChannel):
+        if not isinstance(channel, VOICE_CHANNEL_TYPES):
             await interaction.response.send_message(
                 f"`{channel.name}` is not a voice channel. Select a Discord voice channel.",
                 ephemeral=True,

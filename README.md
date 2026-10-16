@@ -51,7 +51,9 @@ The bot must also be able to send messages and use application commands in the c
 
 Commands are guild-scoped when `GUILD_ID` is set and global otherwise.
 
-`/join` intentionally has no channel argument: it connects to the saved channel. `/setchannel channel:<voice channel>` is the only command that accepts a channel. If Discord displays `/join` with a channel option after an update, restart/redeploy the bot and reopen Discord's command menu; the startup sync removes stale global development definitions when `GUILD_ID` is set.
+`/join` intentionally has no channel argument: it connects to the saved channel. `/setchannel channel:<voice channel>` is the only command that accepts a channel; standard Voice and Stage channels are supported. If Discord displays `/join` with a channel option after an update, restart/redeploy the bot and reopen Discord's command menu; the startup sync removes stale global development definitions when `GUILD_ID` is set.
+
+The bot must already be a member of the `GUILD_ID` server for guild-scoped synchronization. A `403 Missing Access` sync message usually means the ID is wrong or the bot was not invited to that server with both `bot` and `applications.commands` scopes. The bot logs the problem, falls back to global synchronization, and continues starting the scheduler and voice service.
 
 ## Bot-Hosting.net deployment
 

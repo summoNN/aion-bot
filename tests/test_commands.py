@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import discord
 
 from main import AionBot
+from bot.services.voice import VOICE_CHANNEL_TYPES
 
 
 def test_join_and_channel_command_schemas_are_not_confused() -> None:
@@ -34,6 +35,8 @@ def test_join_and_channel_command_schemas_are_not_confused() -> None:
             channel_types = getattr(setchannel.parameters[0]._Parameter__parent, "channel_types")
             assert discord.ChannelType.voice in channel_types
             assert discord.ChannelType.text in channel_types
+            assert discord.VoiceChannel in VOICE_CHANNEL_TYPES
+            assert discord.StageChannel in VOICE_CHANNEL_TYPES
         finally:
             await bot.close()
 

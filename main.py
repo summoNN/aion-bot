@@ -159,29 +159,36 @@ class AionBot(commands.Bot):
         LOGGER.info("Logged in as %s (id=%s)", self.user, self.user.id)
 
     async def _sync_commands(self) -> None:
-        """Synchronize the current command schema and remove stale dev globals."""
+        """Synchronize commands without allowing a bad development guild to stop the bot."""
         if self.settings.guild_id is None:
-            await self.tree.sync()
-            LOGGER.info("Slash commands synced globally")
+            try:
+                await self.tree.sync()
+            except discord.HTTPException:
+                LOGGER.exception("Global slash-command sync failed; the bot will continue without updated commands")
+            else:
+                LOGGER.info("Slash commands synced globally")
             return
 
         guild = discord.Object(id=self.settings.guild_id)
-        current_commands = list(self.tree.get_commands())
-
-        # A previous deployment may have registered an old global /join that
-        # still expects a channel. Remove those global definitions so Discord
-        # cannot present both schemas to users while developing in one guild.
-        self.tree.clear_commands(guild=None)
-        try:
-            await self.tree.sync()
-        finally:
-            for command in current_commands:
-                self.tree.add_command(command)
-
         self.tree.clear_commands(guild=guild)
         self.tree.copy_global_to(guild=guild)
-        await self.tree.sync(guild=guild)
-        LOGGER.info("Slash commands synced to development guild %s", self.settings.guild_id)
+        try:
+            await self.tree.sync(guild=guild)
+        except discord.Forbidden:
+            LOGGER.exception(
+                "Cannot sync commands to guild %s (Missing Access). Verify GUILD_ID, that the bot is in that "
+                "server, and that its invite included applications.commands. Falling back to global sync.",
+                self.settings.guild_id,
+            )
+            self.tree.clear_commands(guild=guild)
+            try:
+                await self.tree.sync()
+            except discord.HTTPException:
+                LOGGER.exception("Global fallback slash-command sync failed")
+            else:
+                LOGGER.info("Slash commands synced globally after development-guild access failure")
+        else:
+            LOGGER.info("Slash commands synced to development guild %s", self.settings.guild_id)
 
     async def on_resumed(self) -> None:
         self._mark_health()

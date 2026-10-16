@@ -15,6 +15,8 @@ import discord
 from bot.services.voice_config import GuildVoiceConfig, VoiceConfigError, VoiceConfigStore
 
 LOGGER = logging.getLogger(__name__)
+VOICE_CHANNEL_TYPES = (discord.VoiceChannel, discord.StageChannel)
+VoiceChannelLike = discord.VoiceChannel | discord.StageChannel
 
 
 @dataclass(slots=True)
@@ -72,7 +74,7 @@ class VoiceService:
         self._guild_volumes[guild.id] = volume
         return volume
 
-    def set_channel(self, guild: discord.Guild, channel: discord.VoiceChannel) -> GuildVoiceConfig:
+    def set_channel(self, guild: discord.Guild, channel: VoiceChannelLike) -> GuildVoiceConfig:
         if channel.guild.id != guild.id:
             raise VoiceConfigError("Voice channel belongs to a different guild")
         return self.voice_config.set_channel(guild.id, channel.id)
@@ -86,13 +88,13 @@ class VoiceService:
             self._cancel_retry(guild.id)
         return config
 
-    def target_channel(self, guild: discord.Guild) -> discord.VoiceChannel | None:
+    def target_channel(self, guild: discord.Guild) -> VoiceChannelLike | None:
         """Resolve only the persisted channel; never fall back to an arbitrary channel."""
         config = self.voice_config.get(guild.id)
         if config is None:
             return None
         channel = guild.get_channel(config.channel_id)
-        return channel if isinstance(channel, discord.VoiceChannel) else None
+        return channel if isinstance(channel, VOICE_CHANNEL_TYPES) else None
 
     def has_configured_target(self, guild: discord.Guild) -> bool:
         return self.target_channel(guild) is not None
@@ -150,7 +152,7 @@ class VoiceService:
         if config is None:
             raise VoiceConfigError("No voice channel is configured for this guild")
         channel = guild.get_channel(config.channel_id)
-        if not isinstance(channel, discord.VoiceChannel):
+        if not isinstance(channel, VOICE_CHANNEL_TYPES):
             raise VoiceConfigError(f"Configured channel {config.channel_id} is not available in this guild")
         if explicit:
             self._intentional_disconnects.discard(guild.id)
@@ -246,7 +248,7 @@ class VoiceService:
                 self._retry_attempts.pop(guild.id, None)
                 self._retry_next_at.pop(guild.id, None)
 
-    async def handle_voice_state_update(self, guild: discord.Guild, channel: discord.VoiceChannel | None) -> None:
+    async def handle_voice_state_update(self, guild: discord.Guild, channel: VoiceChannelLike | None) -> None:
         """React to a bot voice disconnect unless it was intentionally requested."""
         config = self.voice_config.get(guild.id)
         if config is None or self._closing or guild.id in self._intentional_disconnects:
