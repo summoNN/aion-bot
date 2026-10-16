@@ -171,14 +171,22 @@ class EventsCog(commands.Cog):
         if interaction.guild is None:
             await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
             return
+        # TTS generation and queued FFmpeg playback can take longer than Discord's
+        # initial interaction acknowledgement window. Acknowledge immediately and
+        # use the follow-up webhook for every result after this point.
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.NotFound:
+            LOGGER.info("Ignoring expired test announcement interaction")
+            return
         configured = self.scheduler.config.by_id(f"{event.value}-time") if self.scheduler.config else None
         if configured is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"The `{event.name}` event is not configured.", ephemeral=True
             )
             return
         if not self.voice_service.has_target(interaction.guild):
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "No saved voice target is available. Use `/setvoicechannel` first.",
                 ephemeral=True,
             )
@@ -189,9 +197,17 @@ class EventsCog(commands.Cog):
             await self.voice_service.announce(interaction.guild, audio_path)
         except (asyncio.TimeoutError, OSError, discord.DiscordException, RuntimeError, ValueError) as exc:
             LOGGER.exception("Test voice announcement failed")
-            await interaction.response.send_message(f"Voice test failed: {exc}", ephemeral=True)
+            try:
+                await interaction.followup.send(f"Voice test failed: {exc}", ephemeral=True)
+            except discord.NotFound:
+                LOGGER.info("Test announcement follow-up expired")
             return
-        await interaction.response.send_message(f"Played the `{configured.name}` test announcement.", ephemeral=True)
+        try:
+            await interaction.followup.send(
+                f"Played the `{configured.name}` test announcement.", ephemeral=True
+            )
+        except discord.NotFound:
+            LOGGER.info("Test announcement follow-up expired")
 
     @app_commands.command(name="testannouncement", description="Speak a test announcement for Rift or Shugo Time.")
     @app_commands.default_permissions(manage_guild=True)
@@ -473,7 +489,10 @@ class EventsCog(commands.Cog):
         else:
             LOGGER.exception("Application command failed", exc_info=error)
             message = "The command failed unexpectedly. Check the bot logs."
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(message, ephemeral=True)
+            else:
+                await interaction.response.send_message(message, ephemeral=True)
+        except discord.NotFound:
+            LOGGER.info("Ignoring expired application-command error interaction")
