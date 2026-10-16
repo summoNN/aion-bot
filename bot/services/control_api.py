@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
@@ -45,6 +46,7 @@ class ControlAPI:
         self.port = port
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
+        self._channel_cache: dict[int, tuple[float, list[dict[str, Any]]]] = {}
 
     async def start(self) -> None:
         if self._runner is not None:
@@ -95,7 +97,7 @@ class ControlAPI:
         guild = self._find_guild(request.match_info["guild_id"])
         if guild is None:
             return self._error("Bot is not installed in this server.", 404)
-        return web.json_response(self._state_payload(guild))
+        return web.json_response(await self._state_payload(guild))
 
     async def _config(self, request: web.Request) -> web.Response:
         unauthorized = self._authorize(request)
@@ -118,7 +120,7 @@ class ControlAPI:
         except (discord.DiscordException, OSError, asyncio.TimeoutError) as exc:
             LOGGER.exception("Control API configuration update failed for guild %s", guild.id)
             return self._error(str(exc), 502)
-        return web.json_response(self._state_payload(guild))
+        return web.json_response(await self._state_payload(guild))
 
     async def _action(self, request: web.Request) -> web.Response:
         unauthorized = self._authorize(request)
@@ -141,7 +143,7 @@ class ControlAPI:
         except (discord.DiscordException, OSError) as exc:
             LOGGER.exception("Control API action failed for guild %s", guild.id)
             return self._error(str(exc), 502)
-        return web.json_response(self._state_payload(guild))
+        return web.json_response(await self._state_payload(guild))
 
     async def _apply_config(self, guild: discord.Guild, body: dict[str, Any]) -> None:
         scheduler = self.events_cog.scheduler
@@ -227,7 +229,7 @@ class ControlAPI:
         audio_path = await self.tts_service.synthesize(text)
         await self.voice_service.announce(guild, audio_path)
 
-    def _state_payload(self, guild: discord.Guild) -> dict[str, Any]:
+    async def _state_payload(self, guild: discord.Guild) -> dict[str, Any]:
         config = self.events_cog.scheduler.config
         events = []
         if config is not None:
@@ -248,7 +250,7 @@ class ControlAPI:
                 "schedulerRunning": bool(self.events_cog.scheduler.running),
             },
             "guild": self._guild_payload(guild),
-            "voice": self._voice_payload(guild),
+            "voice": await self._voice_payload(guild),
             "schedule": {
                 "internalTimezone": config.internal_timezone_name if config else "UTC",
                 "displayTimezone": config.display_timezone_name if config else "UTC",
@@ -257,18 +259,11 @@ class ControlAPI:
             },
         }
 
-    def _voice_payload(self, guild: discord.Guild) -> dict[str, Any]:
+    async def _voice_payload(self, guild: discord.Guild) -> dict[str, Any]:
         config = self.voice_service.config_for(guild)
         target = self.voice_service.target_channel(guild)
         client = guild.voice_client
-        channels_by_id: dict[int, dict[str, Any]] = {}
-        for channel in guild.channels:
-            if isinstance(channel, VOICE_CHANNEL_TYPES):
-                channels_by_id[channel.id] = {
-                    "id": channel.id,
-                    "name": channel.name,
-                    "categoryName": channel.category.name if channel.category else None,
-                }
+        channels = await self._available_voice_channels(guild)
         connected = bool(client is not None and client.is_connected())
         latency = getattr(client, "latency", None) if connected else None
         if guild.id in self.voice_service._intentional_disconnects:
@@ -284,12 +279,45 @@ class ControlAPI:
             "connected": connected,
             "channelId": config.channel_id if config else None,
             "channelName": target.name if target else (client.channel.name if connected and client.channel else None),
-            "channels": list(channels_by_id.values()),
+            "channels": channels,
             "autojoin": config.autojoin if config else False,
             "volume": self.voice_service.volume_for(guild),
             "latencyMs": round(latency * 1000) if isinstance(latency, (int, float)) else None,
             "reconnect": reconnect,
         }
+
+    async def _available_voice_channels(self, guild: discord.Guild) -> list[dict[str, Any]]:
+        cached = self._channel_cache.get(guild.id)
+        if cached and time.monotonic() - cached[0] < 30:
+            return cached[1]
+
+        channels: list[discord.abc.GuildChannel] = list(guild.channels)
+        try:
+            channels = await guild.fetch_channels()
+        except discord.DiscordException:
+            LOGGER.warning("Could not refresh channels for guild %s; using gateway cache", guild.id)
+
+        member = guild.me
+        channels_by_id: dict[int, dict[str, Any]] = {}
+        for channel in channels:
+            if not isinstance(channel, VOICE_CHANNEL_TYPES):
+                continue
+            if member is not None:
+                permissions = channel.permissions_for(member)
+                if not permissions.view_channel or not permissions.connect or not permissions.speak:
+                    continue
+            channels_by_id[channel.id] = {
+                "id": channel.id,
+                "name": channel.name,
+                "categoryName": channel.category.name if channel.category else None,
+                "type": "stage" if isinstance(channel, discord.StageChannel) else "voice",
+            }
+        result = sorted(
+            channels_by_id.values(),
+            key=lambda channel: (str(channel["categoryName"] or "").casefold(), str(channel["name"]).casefold()),
+        )
+        self._channel_cache[guild.id] = (time.monotonic(), result)
+        return result
 
     def _guild_payload(self, guild: discord.Guild) -> dict[str, Any]:
         member = guild.me
