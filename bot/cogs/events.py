@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import discord
@@ -24,6 +24,31 @@ from bot.services.voice import VOICE_CHANNEL_TYPES, VoiceService
 from bot.services.voice_config import VoiceConfigError
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _discord_time_tags(value: str | None) -> str:
+    """Render an aware ISO timestamp using Discord's per-user timezone service."""
+    if not value:
+        return "not scheduled"
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return "not scheduled"
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    unix = int(parsed.timestamp())
+    return f"<t:{unix}:R> · <t:{unix}:F>"
+
+
+def _next_start_job(jobs: list[dict[str, object]], event_id: str) -> dict[str, object] | None:
+    """Find the next at-start job for an event."""
+    candidates = [
+        job
+        for job in jobs
+        if job.get("event_id") == event_id and job.get("reminder_minutes") == 0
+    ]
+    candidates.sort(key=lambda job: str(job.get("next_run") or ""))
+    return candidates[0] if candidates else None
 
 
 def _csv(value: str, field: str, *, allow_empty: bool = False) -> list[str]:
@@ -136,19 +161,25 @@ class EventsCog(commands.Cog):
             await interaction.response.send_message("No event schedules are configured.", ephemeral=True)
             return
         lines = [
-            f"Schedule timezone: `{config.internal_timezone_name}` internally; display: `{config.display_timezone_name}`"
+            f"Schedule timezone: `{config.internal_timezone_name}` internally; configured display: `{config.display_timezone_name}`\n"
+            "Next times use Discord timestamps and appear in each user's local timezone."
         ]
+        jobs = self.scheduler.job_descriptions()
         for event in config.events:
             state = "enabled" if event.enabled else "disabled"
             placeholder = "; placeholder" if event.placeholder else ""
             weekdays = ", ".join(day.title() for day in event.schedule.weekdays) or "no weekdays"
             times = ", ".join(value.strftime("%H:%M") for value in event.schedule.times) or "no times"
             reminders = ", ".join(str(value) for value in event.schedule.reminders_minutes)
+            next_job = _next_start_job(jobs, event.id) if event.enabled else None
+            next_time = _discord_time_tags(next_job.get("next_run") if next_job else None)
             lines.append(
                 f"**{event.id}** — {event.name} [{state}{placeholder}]\n"
                 f"Region: `{event.region}` | Timezone: `{event.timezone_name}`\n"
                 f"Source: `{event.source}` | Verification: `{event.verification_status}`\n"
-                f"{weekdays} at {times} | reminders: `{reminders}`"
+                f"Pattern (configured wall time): {weekdays} at `{times}`\n"
+                f"Next opening (your time): {next_time}\n"
+                f"Reminders: `{reminders}` minutes before start; `0` means at start"
             )
         await interaction.response.send_message("\n\n".join(lines)[:1900], ephemeral=True)
 
@@ -163,7 +194,7 @@ class EventsCog(commands.Cog):
             reminder = "at start" if job["reminder_minutes"] == 0 else f"{job['reminder_minutes']}m before"
             lines.append(
                 f"**{job['event_name']}** ({job['region']}) — {reminder}\n"
-                f"`{job['next_run_display']}` ({job['display_timezone']}; internal UTC)"
+                f"{_discord_time_tags(job.get('next_run'))} ({job['display_timezone']}; internal UTC)"
             )
         await interaction.response.send_message("\n".join(lines)[:1900], ephemeral=True)
 
