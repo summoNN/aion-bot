@@ -13,7 +13,7 @@ import discord
 from aiohttp import web
 
 from bot.services.event_sources import EventConfigError, build_event, event_to_dict
-from bot.services.voice import VOICE_CHANNEL_TYPES, VoiceService
+from bot.services.voice import VoiceService
 from bot.services.voice_config import VoiceConfigError
 
 LOGGER = logging.getLogger(__name__)
@@ -186,8 +186,8 @@ class ControlAPI:
             if isinstance(channel_id, bool) or not isinstance(channel_id, int) or channel_id <= 0:
                 raise VoiceConfigError("channelId must be a positive integer.")
             channel = guild.get_channel(channel_id)
-            if not isinstance(channel, VOICE_CHANNEL_TYPES):
-                raise VoiceConfigError("Select a voice or stage channel from this server.")
+            if not isinstance(channel, discord.VoiceChannel):
+                raise VoiceConfigError("Select a voice channel from this server.")
             self.voice_service.set_channel(guild, channel)
             current_voice_config = self.voice_service.config_for(guild)
             if current_voice_config and current_voice_config.autojoin:
@@ -300,7 +300,7 @@ class ControlAPI:
         member = guild.me
         channels_by_id: dict[int, dict[str, Any]] = {}
         for channel in channels:
-            if not isinstance(channel, VOICE_CHANNEL_TYPES):
+            if not isinstance(channel, discord.VoiceChannel):
                 continue
             if member is not None:
                 permissions = channel.permissions_for(member)
@@ -310,7 +310,7 @@ class ControlAPI:
                 "id": channel.id,
                 "name": channel.name,
                 "categoryName": channel.category.name if channel.category else None,
-                "type": "stage" if isinstance(channel, discord.StageChannel) else "voice",
+                "type": "voice",
             }
         result = sorted(
             channels_by_id.values(),
