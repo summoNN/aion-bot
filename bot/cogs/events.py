@@ -226,10 +226,18 @@ class EventsCog(commands.Cog):
             return
         try:
             client = await self.voice_service.connect_configured(interaction.guild, explicit=True)
-        except (asyncio.TimeoutError, OSError, discord.DiscordException, RuntimeError, VoiceConfigError) as exc:
+        except VoiceConfigError as exc:
+            if str(exc) == "No voice channel is configured for this guild":
+                await interaction.response.send_message(
+                    "No voice channel is configured for this server. Use `/setchannel` first.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.response.send_message(f"Could not connect: {exc}", ephemeral=True)
+            return
+        except (asyncio.TimeoutError, OSError, discord.DiscordException, RuntimeError) as exc:
             LOGGER.exception("Could not connect to the saved guild voice channel")
-            if not isinstance(exc, VoiceConfigError):
-                self.voice_service.request_reconnect(interaction.guild, reason="explicit /join failed")
+            self.voice_service.request_reconnect(interaction.guild, reason="explicit /join failed")
             await interaction.response.send_message(f"Could not connect: {exc}", ephemeral=True)
             return
         channel_name = client.channel.name if client.channel else "saved channel"
@@ -248,9 +256,15 @@ class EventsCog(commands.Cog):
                 return
         await interaction.response.send_message("Disconnected from voice.", ephemeral=True)
 
-    async def _set_voice_channel(self, interaction: discord.Interaction, channel: discord.VoiceChannel) -> None:
+    async def _set_voice_channel(self, interaction: discord.Interaction, channel: discord.abc.GuildChannel) -> None:
         if interaction.guild is None:
             await interaction.response.send_message("This command must be used in a server.", ephemeral=True)
+            return
+        if not isinstance(channel, discord.VoiceChannel):
+            await interaction.response.send_message(
+                f"`{channel.name}` is not a voice channel. Select a Discord voice channel.",
+                ephemeral=True,
+            )
             return
         try:
             config = self.voice_service.set_channel(interaction.guild, channel)
@@ -274,13 +288,13 @@ class EventsCog(commands.Cog):
     @app_commands.command(name="setvoicechannel", description="Persist the voice channel used for announcements.")
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def setvoicechannel(self, interaction: discord.Interaction, channel: discord.VoiceChannel) -> None:
+    async def setvoicechannel(self, interaction: discord.Interaction, channel: discord.abc.GuildChannel) -> None:
         await self._set_voice_channel(interaction, channel)
 
     @app_commands.command(name="setchannel", description="Set the persistent announcement voice channel.")
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def setchannel(self, interaction: discord.Interaction, channel: discord.VoiceChannel) -> None:
+    async def setchannel(self, interaction: discord.Interaction, channel: discord.abc.GuildChannel) -> None:
         await self._set_voice_channel(interaction, channel)
 
     @app_commands.command(name="autojoin", description="Enable or disable reconnecting on bot startup.")

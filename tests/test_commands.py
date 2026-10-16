@@ -4,6 +4,8 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+import discord
+
 from main import AionBot
 
 
@@ -29,6 +31,9 @@ def test_join_and_channel_command_schemas_are_not_confused() -> None:
             assert join.parameters == []
             assert setchannel is not None
             assert [parameter.name for parameter in setchannel.parameters] == ["channel"]
+            channel_types = getattr(setchannel.parameters[0]._Parameter__parent, "channel_types")
+            assert discord.ChannelType.voice in channel_types
+            assert discord.ChannelType.text in channel_types
         finally:
             await bot.close()
 
