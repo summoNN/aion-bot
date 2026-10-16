@@ -40,6 +40,47 @@ def _discord_time_tags(value: str | None) -> str:
     return f"<t:{unix}:R> · <t:{unix}:F>"
 
 
+def _discord_full_time_tag(value: str | None) -> str:
+    """Render one localized Discord date/time timestamp."""
+    if not value:
+        return "not scheduled"
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return "not scheduled"
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return f"<t:{int(parsed.timestamp())}:F>"
+
+
+def _schedule_time_tags(event: ConfiguredEvent, next_job: dict[str, object] | None) -> str:
+    """Render configured wall-clock times as localized Discord time-only tags."""
+    if next_job is None:
+        return "not scheduled"
+    next_run = next_job.get("next_run")
+    if not isinstance(next_run, str):
+        return "not scheduled"
+    try:
+        parsed = datetime.fromisoformat(next_run)
+    except ValueError:
+        return "not scheduled"
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=event.timezone)
+    schedule_date = parsed.astimezone(event.timezone).date()
+    tags = [
+        f"<t:{int(datetime.combine(schedule_date, event_time, tzinfo=event.timezone).timestamp())}:t>"
+        for event_time in event.schedule.times
+    ]
+    return " ".join(tags) or "no times"
+
+
+def _event_display_label(event: ConfiguredEvent) -> str:
+    return {
+        "shugo-time": "Shugo Time",
+        "rift-time": "Rift Opening",
+    }.get(event.id, event.name)
+
+
 def _next_start_job(jobs: list[dict[str, object]], event_id: str) -> dict[str, object] | None:
     """Find the next at-start job for an event."""
     candidates = [
@@ -160,6 +201,21 @@ class EventsCog(commands.Cog):
         if config is None or not config.events:
             await interaction.response.send_message("No event schedules are configured.", ephemeral=True)
             return
+        jobs = self.scheduler.job_descriptions()
+        event_order = {"shugo-time": 0, "rift-time": 1}
+        events = sorted(config.events, key=lambda event: (event_order.get(event.id, 2), event.name.casefold()))
+        lines: list[str] = []
+        for event in events:
+            next_job = _next_start_job(jobs, event.id) if event.enabled else None
+            next_time = _discord_full_time_tag(next_job.get("next_run") if next_job else None)
+            schedule = _schedule_time_tags(event, next_job)
+            lines.append(
+                f"**{_event_display_label(event)}:**\n"
+                f"Next Opening: {next_time}\n"
+                f"Time Schedule: {schedule}"
+            )
+        await interaction.response.send_message("\n\n".join(lines)[:1900], ephemeral=True)
+        return
         lines = [
             f"Schedule timezone: `{config.internal_timezone_name}` internally; configured display: `{config.display_timezone_name}`\n"
             "Next times use Discord timestamps and appear in each user's local timezone."
