@@ -23,7 +23,8 @@ def test_checked_in_schedule_has_expected_utc_occurrences() -> None:
     assert config.internal_timezone_name == "UTC"
     assert config.display_timezone_name == "Europe/Rome"
     assert rift is not None and len(rift.schedule.times) == 8
-    assert shugo is not None and [value.strftime("%H:%M") for value in shugo.schedule.times] == ["00:00"]
+    assert shugo is not None and len(shugo.schedule.times) == 24
+    assert [value.strftime("%H:%M") for value in shugo.schedule.times] == [f"{hour:02d}:00" for hour in range(24)]
     assert rift.source.startswith("Community observations")
     assert rift.verification_status.startswith("unverified")
 
