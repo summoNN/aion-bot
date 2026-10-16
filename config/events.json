@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "timezone": "UTC",
+  "display_timezone": "Europe/Rome",
+  "events": [
+    {
+      "id": "rift-time",
+      "name": "Spacetime Rift",
+      "region": "European servers",
+      "timezone": "UTC",
+      "source": "Community observations; not officially verified",
+      "verification_status": "unverified community report",
+      "messages": {
+        "reminder": "Attention Daevas! Rift Time begins in five minutes!",
+        "start": "Rift Time is now open! You have ten minutes to enter!"
+      },
+      "enabled": true,
+      "placeholder": false,
+      "schedule": {
+        "type": "weekly",
+        "weekdays": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+        "times": ["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00"],
+        "reminders_minutes": [5, 0]
+      }
+    },
+    {
+      "id": "shugo-time",
+      "name": "Shugo Festival",
+      "region": "European servers",
+      "timezone": "UTC",
+      "source": "Community observations; not officially verified",
+      "verification_status": "unverified community report",
+      "messages": {
+        "reminder": "Attention Daevas! Shugo Time begins in five minutes!",
+        "start": "Shugo Time has started! Good luck!"
+      },
+      "enabled": true,
+      "placeholder": false,
+      "schedule": {
+        "type": "weekly",
+        "weekdays": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+        "times": ["00:00"],
+        "reminders_minutes": [5, 0]
+      }
+    }
+  ]
+}
