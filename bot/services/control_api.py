@@ -11,8 +11,8 @@ from typing import Any
 import discord
 from aiohttp import web
 
-from bot.services.event_sources import EventConfigError, event_to_dict
-from bot.services.voice import VoiceService
+from bot.services.event_sources import EventConfigError, build_event, event_to_dict
+from bot.services.voice import VOICE_CHANNEL_TYPES, VoiceService
 from bot.services.voice_config import VoiceConfigError
 
 LOGGER = logging.getLogger(__name__)
@@ -149,18 +149,47 @@ class ControlAPI:
         if config is None:
             raise RuntimeError("The event scheduler is not ready yet.")
 
-        if "eventId" in body or "enabled" in body:
+        if any(key in body for key in ("eventId", "enabled", "messages")):
             event_id = body.get("eventId")
-            enabled = body.get("enabled")
             if not isinstance(event_id, str) or not event_id.strip():
-                raise EventConfigError("eventId is required when changing an event.")
-            if not isinstance(enabled, bool):
-                raise EventConfigError("enabled must be a boolean.")
+                raise EventConfigError("eventId is required when changing an event or its messages.")
             event = config.by_id(event_id)
             if event is None:
                 raise EventConfigError(f"Unknown event id: {event_id}")
-            await scheduler.upsert_event(replace(event, enabled=enabled))
+            enabled = body.get("enabled", event.enabled)
+            messages = body.get("messages", {})
+            if not isinstance(enabled, bool):
+                raise EventConfigError("enabled must be a boolean.")
+            if not isinstance(messages, dict):
+                raise EventConfigError("messages must be an object.")
+            validated = build_event(
+                event_id=event.id,
+                name=event.name,
+                region=event.region,
+                timezone_name=event.timezone_name,
+                weekdays=list(event.schedule.weekdays),
+                times=[value.strftime("%H:%M") for value in event.schedule.times],
+                reminders_minutes=list(event.schedule.reminders_minutes),
+                enabled=enabled,
+                start_message=messages.get("start", event.messages.start),
+                reminder_message=messages.get("reminder", event.messages.reminder),
+                source=event.source,
+                verification_status=event.verification_status,
+            )
+            await scheduler.upsert_event(replace(event, enabled=enabled, messages=validated.messages))
             config = scheduler.config
+
+        if "channelId" in body:
+            channel_id = body["channelId"]
+            if isinstance(channel_id, bool) or not isinstance(channel_id, int) or channel_id <= 0:
+                raise VoiceConfigError("channelId must be a positive integer.")
+            channel = guild.get_channel(channel_id)
+            if not isinstance(channel, VOICE_CHANNEL_TYPES):
+                raise VoiceConfigError("Select a voice or stage channel from this server.")
+            self.voice_service.set_channel(guild, channel)
+            current_voice_config = self.voice_service.config_for(guild)
+            if current_voice_config and current_voice_config.autojoin:
+                await self.voice_service.connect_configured(guild, explicit=True)
 
         if "autojoin" in body:
             autojoin = body["autojoin"]
@@ -247,6 +276,15 @@ class ControlAPI:
             "connected": connected,
             "channelId": config.channel_id if config else None,
             "channelName": target.name if target else (client.channel.name if connected and client.channel else None),
+            "channels": [
+                {
+                    "id": channel.id,
+                    "name": channel.name,
+                    "categoryName": channel.category.name if channel.category else None,
+                }
+                for channel in guild.channels
+                if isinstance(channel, VOICE_CHANNEL_TYPES)
+            ],
             "autojoin": config.autojoin if config else False,
             "volume": self.voice_service.volume_for(guild),
             "latencyMs": round(latency * 1000) if isinstance(latency, (int, float)) else None,
